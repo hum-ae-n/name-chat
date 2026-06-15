@@ -33,7 +33,7 @@ PREFIX | Topic | YYYY-MM-DD [flags]
 - No background service worker
 - No external network requests
 - Content script only runs on claude.ai
-- Extension source is fully readable (~280 lines of JS)
+- Extension source is fully readable (~600 lines of JS, single file)
 
 ## Install
 
@@ -61,6 +61,12 @@ claude-toolkit/
 
 ## Version history
 
-- **v2.1.0** — Added response watcher. Auto-copies name from Claude's response.
+- **v2.2.0** — Hardening pass. All claude.ai selectors centralized into one
+  `SELECTORS` block. Stream-completion detected via the Stop→Send button
+  transition (finishes the moment a valid name appears, instead of a blind
+  timer). Clipboard is now the guaranteed primary path; auto-apply is an
+  opt-in, non-blocking bonus (`AUTO_APPLY`, off by default). Health-check
+  toast when the DOM changes.
+- v2.1.0 — Added response watcher. Auto-copies name from Claude's response.
 - v2.0.0 — Rebuilt. No API calls. Triggers Claude's naming skill directly.
 - v1.0.0 — API-based classification (retired for security reasons).

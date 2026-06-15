@@ -12,21 +12,77 @@
 
   const BUTTON_ID_ATTR = 'data-kai-namer';
   const PROMPT_TEXT = 'rename this chat';
-  const WATCH_TIMEOUT_MS = 45000;
-  const DEBOUNCE_MS = 2000;
+  const WATCH_TIMEOUT_MS = 45000;   // hard give-up after sending the prompt
+  const QUIET_MS = 1500;            // fallback "stream settled" window if Stop button isn't detected
+  const SETTLE_POLL_MS = 400;       // how often the watcher re-evaluates after a mutation
+  const AUTO_APPLY = false;         // best-effort in-place rename; off by default — clipboard is the primary path
   const VALID_PREFIXES = ['EXN','CLIENT','ART','LI','TOOL','CAR','COMS','KAI','READ','LIFE'];
   const NAME_PATTERN = new RegExp(
     '^(' + VALID_PREFIXES.join('|') + ') \\| .+ \\| \\d{4}-\\d{2}-\\d{2}'
   );
+
+  // ── Selectors ─────────────────────────────────────────────────────────
+  // EVERY claude.ai DOM dependency lives here. When the site redesigns and the
+  // extension stops working, this is the only block you need to touch. Each
+  // entry is an ordered list of fallbacks, tried first to last.
+
+  const SELECTORS = {
+    editor: [
+      '.ProseMirror[contenteditable="true"]',
+      'main [contenteditable="true"]',
+      'main textarea',
+      'footer textarea',
+    ],
+    sendButton: [
+      'button[aria-label="Send message"]',
+      'button[aria-label="Send"]',
+      'button[aria-label="Submit"]',
+    ],
+    // Present only while Claude is generating. Its disappearance = stream done.
+    stopButton: [
+      'button[aria-label="Stop response"]',
+      'button[aria-label="Stop generating"]',
+      'button[aria-label="Stop"]',
+      'button[data-testid="stop-button"]',
+    ],
+    // Where the response name renders. Scoped to the conversation area.
+    responseCode: 'main code',
+    // Anchors for injecting the namer button, best to worst.
+    actionAnchor: [
+      'button[aria-label="Copy"]',
+      'button[aria-label="Retry"]',
+      '[data-testid*="copy"]',
+      '[data-testid*="action"]',
+    ],
+    actionGroup: 'main .flex.items-center.gap-1, main .flex.items-center.gap-2, main [class*="actions"]',
+    mainArea: 'main, [role="main"]',
+  };
+
+  function pick(list) {
+    const arr = Array.isArray(list) ? list : [list];
+    for (const sel of arr) {
+      const el = document.querySelector(sel);
+      if (el) return el;
+    }
+    return null;
+  }
 
   const TAG_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r="1.2" fill="#C0392B" stroke="none"/></svg>`;
 
   // ── Find the chat input ───────────────────────────────────────────────
 
   function findEditor() {
-    return document.querySelector('.ProseMirror[contenteditable="true"]')
-        || document.querySelector('main [contenteditable="true"]')
-        || document.querySelector('main textarea, footer textarea');
+    return pick(SELECTORS.editor);
+  }
+
+  // ── Streaming state ───────────────────────────────────────────────────
+  // Claude shows a Stop button while generating; it reverts to Send when done.
+  // This is a far more reliable "response finished" signal than guessing from
+  // mutation quietness alone.
+
+  function isStreaming() {
+    const stop = pick(SELECTORS.stopButton);
+    return !!(stop && !stop.disabled);
   }
 
   // ── Inject text into ProseMirror ──────────────────────────────────────
@@ -87,8 +143,8 @@
   // ── Find and click send ───────────────────────────────────────────────
 
   function findAndClickSend() {
-    for (const label of ['Send message', 'Send', 'Submit']) {
-      const btn = document.querySelector(`button[aria-label="${label}"]`);
+    for (const sel of SELECTORS.sendButton) {
+      const btn = document.querySelector(sel);
       if (btn && !btn.disabled) { btn.click(); return true; }
     }
 
@@ -253,81 +309,89 @@
   }
 
   // ── Response watcher ──────────────────────────────────────────────────
-  // After sending the prompt, watches the DOM for Claude's response.
-  // When streaming finishes (no mutations for DEBOUNCE_MS), looks for a
-  // <code> element matching PREFIX | Topic | YYYY-MM-DD.
-  // Tries to auto-apply the title, falls back to clipboard.
+  // After sending the prompt, watches the conversation for Claude's reply and
+  // finishes as soon as BOTH are true:
+  //   1. a <code> element matching PREFIX | Topic | YYYY-MM-DD has appeared, and
+  //   2. the stream has finished (Stop button gone, or QUIET_MS of no mutations
+  //      as a fallback when the Stop button can't be located).
+  // The name is always copied to the clipboard (the guaranteed path). Auto-apply
+  // is an opt-in, non-blocking bonus.
 
   function startResponseWatcher(btn) {
-    const codeCountBefore = document.querySelectorAll('main code').length;
+    const codeCountBefore = document.querySelectorAll(SELECTORS.responseCode).length;
     let watchTimeout = null;
-    let debounceTimeout = null;
-    let found = false;
+    let pollTimeout = null;
+    let lastMutation = nowish();
+    let done = false;
 
-    showToast('Waiting for Claude...', 'info');
+    showToast('Waiting for Claude…', 'info');
+
+    function evaluate() {
+      if (done) return;
+      const name = findNameInNewResponse(codeCountBefore);
+      if (!name) return;
+
+      // Name is present. Only finish once the stream has actually settled, so we
+      // don't grab a half-rendered code span mid-stream.
+      const settledByButton = !isStreaming();
+      const settledByQuiet = (nowish() - lastMutation) >= QUIET_MS;
+      if (settledByButton || settledByQuiet) {
+        finish(name);
+      }
+    }
 
     const watcher = new MutationObserver(() => {
-      clearTimeout(debounceTimeout);
-      debounceTimeout = setTimeout(async () => {
-        const name = findNameInNewResponse(codeCountBefore);
-        if (name) {
-          found = true;
-          cleanup();
-
-          // Try auto-apply first
-          let applied = false;
-          try {
-            applied = await tryAutoApplyTitle(name);
-          } catch (_) {}
-
-          if (applied) {
-            showToast('Renamed: ' + name, 'success');
-          } else {
-            // Fall back to clipboard
-            try {
-              await navigator.clipboard.writeText(name);
-              showToast('Copied: ' + name + ' — paste as chat title', 'success');
-            } catch (_) {
-              showToast('Name: ' + name + ' — copy it manually', 'warning');
-            }
-          }
-        }
-      }, DEBOUNCE_MS);
+      lastMutation = nowish();
+      clearTimeout(pollTimeout);
+      pollTimeout = setTimeout(evaluate, SETTLE_POLL_MS);
     });
 
-    const main = document.querySelector('main') || document.querySelector('[role="main"]');
+    const main = pick(SELECTORS.mainArea);
     if (main) {
       watcher.observe(main, { childList: true, subtree: true, characterData: true });
     }
 
-    // Timeout: give up after WATCH_TIMEOUT_MS
-    watchTimeout = setTimeout(async () => {
-      if (!found) {
-        const name = findNameInNewResponse(codeCountBefore);
-        if (name) {
-          let applied = false;
-          try { applied = await tryAutoApplyTitle(name); } catch (_) {}
-          if (applied) {
-            showToast('Renamed: ' + name, 'success');
-          } else {
-            try {
-              await navigator.clipboard.writeText(name);
-              showToast('Copied: ' + name + ' — paste as chat title', 'success');
-            } catch (_) {
-              showToast('Name: ' + name, 'warning');
-            }
-          }
-        } else {
-          showToast('Response received. Copy the name manually.', 'warning');
-        }
+    // Hard give-up: try one last extraction, then surface a clear message.
+    watchTimeout = setTimeout(() => {
+      if (done) return;
+      const name = findNameInNewResponse(codeCountBefore);
+      if (name) finish(name);
+      else {
+        cleanup();
+        showToast('No name found in Claude\'s reply. Check the naming skill output, then copy manually.', 'warning');
       }
-      cleanup();
     }, WATCH_TIMEOUT_MS);
+
+    async function finish(name) {
+      if (done) return;
+      done = true;
+      cleanup();
+
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(name);
+        copied = true;
+      } catch (_) {}
+
+      // Opt-in best-effort in-place rename; never blocks the clipboard result.
+      let applied = false;
+      if (AUTO_APPLY) {
+        try { applied = await tryAutoApplyTitle(name); } catch (_) {}
+      }
+
+      if (applied) {
+        showToast('Renamed → ' + name, 'success');
+      } else if (copied) {
+        showToast('Copied → ' + name + '  ·  click the chat title and paste', 'success');
+      } else {
+        showToast('Name ready → ' + name + '  ·  copy it manually', 'warning');
+      }
+    }
 
     function cleanup() {
       watcher.disconnect();
       clearTimeout(watchTimeout);
-      clearTimeout(debounceTimeout);
+      clearTimeout(pollTimeout);
       if (btn) {
         btn.classList.remove('kai-namer-loading');
         btn.disabled = false;
@@ -336,7 +400,7 @@
   }
 
   function findNameInNewResponse(codeCountBefore) {
-    const allCode = document.querySelectorAll('main code');
+    const allCode = document.querySelectorAll(SELECTORS.responseCode);
     // Only check code elements that appeared AFTER we sent the prompt
     for (let i = allCode.length - 1; i >= codeCountBefore; i--) {
       const text = allCode[i]?.textContent?.trim();
@@ -360,7 +424,9 @@
     try {
       const editor = findEditor();
       if (!editor) {
-        showToast('Could not find chat input. Try Ctrl+Shift+K.', 'error');
+        // Health-check: a missing composer almost always means claude.ai changed
+        // its DOM. Point the fix at SELECTORS rather than failing silently.
+        showToast('Chat input not found — claude.ai layout may have changed. Update SELECTORS.editor in content.js.', 'error');
         btn.classList.remove('kai-namer-loading');
         btn.disabled = false;
         return;
@@ -422,15 +488,8 @@
   function injectButtons() {
     if (document.querySelector(`[${BUTTON_ID_ATTR}]`)) return;
 
-    const selectors = [
-      'button[aria-label="Copy"]',
-      'button[aria-label="Retry"]',
-      '[data-testid*="copy"]',
-      '[data-testid*="action"]'
-    ];
-
     let actionButton = null;
-    for (const sel of selectors) {
+    for (const sel of SELECTORS.actionAnchor) {
       const matches = document.querySelectorAll(sel);
       if (matches.length > 0) {
         actionButton = matches[matches.length - 1];
@@ -446,9 +505,7 @@
       }
     }
 
-    const btnGroups = document.querySelectorAll(
-      'main .flex.items-center.gap-1, main .flex.items-center.gap-2, main [class*="actions"]'
-    );
+    const btnGroups = document.querySelectorAll(SELECTORS.actionGroup);
     if (btnGroups.length > 0) {
       const last = btnGroups[btnGroups.length - 1];
       if (!last.querySelector(`[${BUTTON_ID_ATTR}]`)) {
@@ -486,6 +543,14 @@
 
   function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Monotonic-ish timestamp for settle timing. performance.now() is unaffected
+  // by wall-clock changes; falls back to Date.now() if unavailable.
+  function nowish() {
+    return (typeof performance !== 'undefined' && performance.now)
+      ? performance.now()
+      : Date.now();
   }
 
   // ── MutationObserver for button injection ─────────────────────────────

@@ -42,14 +42,17 @@ loaded directly by Chrome as a content script.
    - `injectText()` writes "rename this chat" using 4 fallback strategies
      (`execCommand` → paste event → direct DOM → textarea value setter).
    - `findAndClickSend()` clicks send (aria-label → svg heuristic → Enter key).
-3. **Watch** — `startResponseWatcher()` snapshots the count of `main code`
-   elements, then observes `main` with a **2s debounce**. When mutations settle
-   (or after a **45s timeout**), it scans only the *new* `<code>` elements.
+3. **Watch** — `startResponseWatcher()` snapshots the count of response `<code>`
+   elements, then observes `main`. It finishes as soon as **both** a valid name
+   has appeared **and** the stream has settled — settled means the Stop button is
+   gone (`isStreaming()`), or `QUIET_MS` of no mutations as a fallback. Hard
+   give-up at `WATCH_TIMEOUT_MS` (45s).
 4. **Extract** — `findNameInNewResponse()` tests each new `<code>` against
    `NAME_PATTERN`. First match wins.
-5. **Apply** — `tryAutoApplyTitle()` attempts to rename in-place (sidebar rename
-   button → inline double-click → header title). On failure it falls back to
-   `navigator.clipboard.writeText()` and a toast telling the user to paste.
+5. **Apply** — clipboard is the **guaranteed primary path**:
+   `navigator.clipboard.writeText()` + a toast telling the user to paste.
+   `tryAutoApplyTitle()` (in-place sidebar rename) is an **opt-in, non-blocking
+   bonus**, gated behind the `AUTO_APPLY` flag (default `false`).
 
 ## The skill ⇄ extension contract (load-bearing)
 
@@ -73,11 +76,11 @@ the watcher.
 - **Edit `claude-toolkit/content.js` directly**; reload the extension at
   `chrome://extensions/` and refresh a `claude.ai` chat to test. There is no
   build.
-- **Selectors are brittle by nature** — they target `claude.ai`'s live DOM
-  (Tailwind classes, aria-labels, ProseMirror). Expect them to break when the
-  site changes; that's the main maintenance burden. Keep the multi-strategy
-  fallback pattern when touching `injectText`, `findAndClickSend`,
-  `injectButtons`, or `tryAutoApplyTitle` — never collapse to a single selector.
+- **All claude.ai selectors live in the `SELECTORS` block** at the top of
+  `content.js`. When the site redesigns and the extension breaks, that block is
+  the only thing you need to edit — the health-check toast will tell the user
+  which selector failed. Keep the ordered-fallback (`pick()`) pattern; never
+  collapse a selector list to a single brittle entry.
 - **Re-zip for distribution** after changes:
   ```bash
   cd "claude-toolkit" && zip -r ../kaipability-chat-namer-v2.zip . -x '*.DS_Store'
@@ -89,17 +92,18 @@ the watcher.
 
 ## Known gotchas / cleanup candidates
 
-- **Version drift**: README "Version history" lists v2.1.0, manifest says
-  `2.0.0`. README also calls `content.js` "~280 lines" — it's ~540. Reconcile
-  when editing.
-- **Dead/weak selectors**: `tryAutoApplyTitle` Strategy 1 uses
-  `nav a[href*="/chat/"].bg-` — `.bg-` is a literal class selector that almost
-  never matches claude.ai's actual `bg-*` classes, so auto-apply usually falls
-  through to the clipboard path. Verify against the live DOM before relying on it.
+- **Auto-apply is intentionally off** (`AUTO_APPLY = false`). `tryAutoApplyTitle`
+  is kept as a best-effort bonus but its sidebar selectors (e.g. the literal
+  `nav a[href*="/chat/"].bg-`) rarely match claude.ai's real `bg-*` classes, so
+  in-place rename is unreliable. The product UX is clipboard-paste by design —
+  don't sink time into chasing reliable auto-rename.
 - The `content_security_policy.extension_pages` entry is harmless but unused —
   there are no extension pages (popup/options).
-- `WATCH_TIMEOUT_MS` (45s) and `DEBOUNCE_MS` (2s) are the tuning knobs if Claude's
-  responses get slower or the watcher fires early.
+- **Tuning knobs**: `WATCH_TIMEOUT_MS` (45s hard give-up), `QUIET_MS` (1.5s
+  settle fallback when the Stop button can't be found), `SETTLE_POLL_MS` (400ms
+  re-evaluate cadence).
+- **Manual test only** — no automated harness. After editing, reload at
+  `chrome://extensions/`, refresh a `claude.ai` chat, and run one rename.
 
 ## Conventions
 
