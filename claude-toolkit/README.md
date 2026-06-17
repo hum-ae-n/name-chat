@@ -61,6 +61,8 @@ claude-toolkit/
 
 ## Version history
 
+- **v2.3.1** — Extension icon redesigned: a red tag on a rounded square,
+  matching the in-page button and floating FAB (replaces the placeholder "K").
 - **v2.3.0** — Tolerant name extraction. The matcher now finds the name
   *anywhere* in an element (not anchored to the start), so leading labels like
   "Proposed: " no longer break it, and it extracts just the name. Scans
