@@ -61,6 +61,11 @@ claude-toolkit/
 
 ## Version history
 
+- **v2.4.1** — Read the ```chatname block by scanning `<pre>` text with the name
+  pattern, instead of a `code[class*="chatname"]` selector. claude.ai shows the
+  info string as a header label *outside* the `<code>`, so the class-based
+  selector missed it; scanning `<pre>` is robust to that and to token spans. Skill
+  output is unchanged — no need to re-upload the skill for this one.
 - **v2.4.0** — Deterministic name channel. The skill now emits the name in a
   ```chatname fenced block; the extension reads that block's text verbatim
   (`SELECTORS.nameBlock`) instead of guessing which code span holds the name.

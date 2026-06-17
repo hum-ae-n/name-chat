@@ -52,14 +52,14 @@
       'button[aria-label="Stop"]',
       'button[data-testid="stop-button"]',
     ],
-    // DETERMINISTIC channel: the skill wraps the name in a ```chatname fenced
-    // block, which claude.ai renders as <code class="language-chatname">. Its
-    // text is exactly the name — read verbatim, no pattern-guessing. This is the
-    // primary, unambiguous signal.
-    nameBlock: 'main pre code[class*="chatname"], main code[class*="chatname"]',
-    // FALLBACK channel: if the labeled block is absent (skill drift, or claude.ai
-    // didn't apply the language class), scan code / bold elements and match by
-    // pattern. A plain-text fallback in findNameInNewResponse() is the last line.
+    // PRIMARY channel: the skill wraps the name in a ```chatname fenced block,
+    // which claude.ai renders as a <pre> code block. Scanning <pre> text by
+    // pattern is robust to where claude.ai puts the language class (it shows the
+    // info string as a header label OUTSIDE the <code>, so a class-based selector
+    // missed it) and to syntax-highlight token spans inside the block.
+    codeBlocks: 'main pre',
+    // FALLBACK channel: inline code / bold elements, matched by pattern. A
+    // whole-reply plain-text fallback in findNameInNewResponse() is the last line.
     nameContainers: 'main code, main strong, main b',
     // Anchors for injecting the namer button, best to worst.
     actionAnchor: [
@@ -401,16 +401,15 @@
   }
 
   function findNameInNewResponse(codeCountBefore) {
-    // 0) Deterministic channel: the ```chatname block. Its content IS the name,
-    //    so read it verbatim (take the first line, trim). Newest block wins.
-    const blocks = document.querySelectorAll(SELECTORS.nameBlock);
-    if (blocks.length) {
-      const raw = blocks[blocks.length - 1].textContent;
-      if (raw && raw.trim()) {
-        const line = raw.trim().split('\n')[0].trim();
-        const m = line.match(NAME_PATTERN);
-        return m ? m[0].trim() : line;   // accept verbatim even if format drifts
-      }
+    // 0) PRIMARY: code blocks. The ```chatname block renders as a <pre> whose
+    //    text is the name. Scan newest-first and match by pattern — works no
+    //    matter where the language class lives or how the block is tokenized.
+    const blocks = document.querySelectorAll(SELECTORS.codeBlocks);
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const text = blocks[i] && blocks[i].textContent;
+      if (!text) continue;
+      const m = text.match(NAME_PATTERN);
+      if (m) return m[0].trim();
     }
 
     // 1) Preferred fallback: a formatted element (code / strong / bold) that
