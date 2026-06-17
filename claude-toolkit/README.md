@@ -61,6 +61,11 @@ claude-toolkit/
 
 ## Version history
 
+- **v2.3.2** — Fixed the watcher hanging on "Waiting for Claude…". Replaced the
+  mutation-triggered settle check with a steady interval poller, so the
+  quiet-window fallback fires even after the DOM stops changing (the old timer
+  couldn't re-check once mutations ceased). Clipboard copy now falls back to
+  `execCommand` and always surfaces the name even if the browser blocks the copy.
 - **v2.3.1** — Extension icon redesigned: a red tag on a rounded square,
   matching the in-page button and floating FAB (replaces the placeholder "K").
 - **v2.3.0** — Tolerant name extraction. The matcher now finds the name

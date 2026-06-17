@@ -329,59 +329,46 @@
 
   function startResponseWatcher(btn) {
     const codeCountBefore = document.querySelectorAll(SELECTORS.nameContainers).length;
-    let watchTimeout = null;
-    let pollTimeout = null;
+    const started = nowish();
     let lastMutation = nowish();
     let done = false;
 
     showToast('Waiting for Claude…', 'info');
 
-    function evaluate() {
-      if (done) return;
-      const name = findNameInNewResponse(codeCountBefore);
-      if (!name) return;
-
-      // Name is present. Only finish once the stream has actually settled, so we
-      // don't grab a half-rendered code span mid-stream.
-      const settledByButton = !isStreaming();
-      const settledByQuiet = (nowish() - lastMutation) >= QUIET_MS;
-      if (settledByButton || settledByQuiet) {
-        finish(name);
-      }
-    }
-
-    const watcher = new MutationObserver(() => {
-      lastMutation = nowish();
-      clearTimeout(pollTimeout);
-      pollTimeout = setTimeout(evaluate, SETTLE_POLL_MS);
-    });
-
+    // Track DOM activity only — so we can tell when the stream has gone quiet.
+    const watcher = new MutationObserver(() => { lastMutation = nowish(); });
     const main = pick(SELECTORS.mainArea);
     if (main) {
       watcher.observe(main, { childList: true, subtree: true, characterData: true });
     }
 
-    // Hard give-up: try one last extraction, then surface a clear message.
-    watchTimeout = setTimeout(() => {
+    // Steady poller, independent of mutations. This is the fix for the watcher
+    // hanging on "Waiting for Claude…": the quiet-window fallback must keep
+    // firing AFTER the page stops mutating, which a mutation-triggered timer
+    // can't do. Finishes when a valid name is present AND the stream has
+    // settled — Stop button gone, or QUIET_MS of no DOM changes.
+    const poll = setInterval(() => {
       if (done) return;
       const name = findNameInNewResponse(codeCountBefore);
-      if (name) finish(name);
-      else {
-        cleanup();
+      const elapsed = nowish() - started;
+
+      if (name) {
+        const quiet = (nowish() - lastMutation) >= QUIET_MS;
+        if (!isStreaming() || quiet) { finish(name); return; }
+      }
+
+      if (elapsed >= WATCH_TIMEOUT_MS) {
+        if (name) { finish(name); return; }
+        stop();
         showToast('No name found in Claude\'s reply. Check the naming skill output, then copy manually.', 'warning');
       }
-    }, WATCH_TIMEOUT_MS);
+    }, SETTLE_POLL_MS);
 
     async function finish(name) {
       if (done) return;
-      done = true;
-      cleanup();
+      stop();
 
-      let copied = false;
-      try {
-        await navigator.clipboard.writeText(name);
-        copied = true;
-      } catch (_) {}
+      const copied = await copyToClipboard(name);
 
       // Opt-in best-effort in-place rename; never blocks the clipboard result.
       let applied = false;
@@ -394,14 +381,14 @@
       } else if (copied) {
         showToast('Copied → ' + name + '  ·  click the chat title and paste', 'success');
       } else {
-        showToast('Name ready → ' + name + '  ·  copy it manually', 'warning');
+        showToast('Name → ' + name + '  ·  select & copy it (clipboard was blocked)', 'warning');
       }
     }
 
-    function cleanup() {
+    function stop() {
+      done = true;
       watcher.disconnect();
-      clearTimeout(watchTimeout);
-      clearTimeout(pollTimeout);
+      clearInterval(poll);
       if (btn) {
         btn.classList.remove('kai-namer-loading');
         btn.disabled = false;
@@ -572,6 +559,35 @@
     return (typeof performance !== 'undefined' && performance.now)
       ? performance.now()
       : Date.now();
+  }
+
+  // Copy text resiliently. The async Clipboard API can reject (no transient user
+  // activation by the time the watcher resolves, or the tab isn't focused), so
+  // fall back to a hidden-textarea execCommand. Returns true if either worked.
+  async function copyToClipboard(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (_) { /* fall through to legacy path */ }
+
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ── MutationObserver for button injection ─────────────────────────────
