@@ -76,10 +76,12 @@ const VALID_PREFIXES = ['EXN','CLIENT','ART','LI','TOOL','CAR','COMS','KAI','REA
 const NAME_PATTERN = /\b(EXN|CLIENT|ART|LI|TOOL|CAR|COMS|KAI|READ|LIFE) \| .+? \| \d{4}-\d{2}-\d{2}(?:\s*\[[^\]]+\])?/;
 ```
 
-Naming convention: `PREFIX | Topic | YYYY-MM-DD [flags]`. The skill emits the
-name in an **inline backtick code span** (its dominant style) — don't try to
-force a fenced block; the skill is full of inline examples and the model reverts
-to inline anyway. Detection is deliberately format-agnostic. Layers
+Naming convention: `PREFIX | Topic | YYYY-MM-DD [flags]`. **In manual mode (the
+default) none of this matters — the extension never reads the reply.** The
+detection below applies only to opt-in `'auto'` mode. The skill emits the name in
+an **inline backtick code span** (its dominant style) — don't try to force a
+fenced block; the skill is full of inline examples and the model reverts to
+inline anyway. Detection is deliberately format-agnostic. Layers
 (`findNameInNewResponse`), in order:
 0. `<pre>` code blocks (`SELECTORS.codeBlocks`) matched by pattern — catches a
    fenced block if one ever appears. Harmless bonus.
@@ -104,10 +106,15 @@ canonical skill lives in `../Skill/` (re-upload to claude.ai after editing).
   the only thing you need to edit — the health-check toast will tell the user
   which selector failed. Keep the ordered-fallback (`pick()`) pattern; never
   collapse a selector list to a single brittle entry.
-- **Re-zip for distribution** after changes:
-  ```bash
-  cd "claude-toolkit" && zip -r ../kaipability-chat-namer-v2.zip . -x '*.DS_Store'
+- **Re-zip for distribution** after changes. `zip` isn't on the Windows dev box;
+  use PowerShell with forward-slash entries (claude.ai's skill uploader and
+  Chrome both want `/`, not the `\` that `Compress-Archive` writes):
+  ```powershell
+  # see the New-Zip helper pattern used in this repo's history:
+  # open the zip in Create mode and CreateEntry($top + '/' + $rel.Replace('\','/'))
   ```
+  The same helper repackages both `kaipability-chat-namer-v2.zip` (top folder
+  `claude-toolkit/`) and `Skill/chat-naming.zip` (top folder `chat-naming/`).
 - Keep the **privacy invariant**: no network calls, no new host permissions, no
   background service worker. Permissions stay minimal (`activeTab`,
   `clipboardWrite`).
@@ -115,16 +122,18 @@ canonical skill lives in `../Skill/` (re-upload to claude.ai after editing).
 
 ## Known gotchas / cleanup candidates
 
-- **Auto-apply is intentionally off** (`AUTO_APPLY = false`). `tryAutoApplyTitle`
-  is kept as a best-effort bonus but its sidebar selectors (e.g. the literal
-  `nav a[href*="/chat/"].bg-`) rarely match claude.ai's real `bg-*` classes, so
-  in-place rename is unreliable. The product UX is clipboard-paste by design —
-  don't sink time into chasing reliable auto-rename.
+- **Manual mode is the product** (`MODE = 'manual'`). The whole auto path
+  (`startResponseWatcher`, `findNameInNewResponse`, `copyToClipboard`,
+  `tryAutoApplyTitle`, `isStreaming`, `norm`) only runs under `MODE = 'auto'` and
+  is dormant by default. It repeatedly broke against claude.ai's response DOM
+  (timing, nbsp in code spans, label location); the inject+send core never did.
+  Don't make `'auto'` the default again without a strong reason.
+- **Auto-apply** (`AUTO_APPLY = false`) is doubly off — only reachable in auto
+  mode, and its sidebar selectors rarely match. Don't chase reliable auto-rename.
 - The `content_security_policy.extension_pages` entry is harmless but unused —
   there are no extension pages (popup/options).
-- **Tuning knobs**: `WATCH_TIMEOUT_MS` (45s hard give-up), `QUIET_MS` (1.5s
-  settle fallback when the Stop button can't be found), `SETTLE_POLL_MS` (400ms
-  re-evaluate cadence).
+- **Auto-mode tuning knobs**: `WATCH_TIMEOUT_MS` (45s hard give-up), `QUIET_MS`
+  (1.5s settle fallback), `SETTLE_POLL_MS` (400ms re-evaluate cadence).
 - **Manual test only** — no automated harness. After editing, reload at
   `chrome://extensions/`, refresh a `claude.ai` chat, and run one rename.
 
@@ -135,9 +144,11 @@ canonical skill lives in `../Skill/` (re-upload to claude.ai after editing).
 - User-facing feedback is always a `showToast(message, type)` call
   (`error`/`warning`/`success`/`info`) — don't `alert()` or `console.log` for UX.
 
-## Note
+## Repo state
 
-The GitHub remote currently contains only a `deleteme` file with a personal
-message; the extension source lives in the zip / `claude-toolkit/`. The two are
-not yet synced — pushing the toolkit to the remote is a separate, user-approved
+The extension (`claude-toolkit/`) and the canonical skill (`Skill/chat-naming/`)
+are both committed and pushed to `hum-ae-n/name-chat` (branch `main`). The two
+distributable zips (`kaipability-chat-namer-v2.zip`, `Skill/chat-naming.zip`) are
+tracked alongside their sources — rebuild them with the PowerShell helper above
+whenever the sources change, and keep `manifest.json` version + README history in
 step.

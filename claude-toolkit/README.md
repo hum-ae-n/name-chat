@@ -21,16 +21,19 @@ depends on claude.ai's response DOM and is off by default.
 PREFIX | Topic | YYYY-MM-DD [flags]
 ```
 
-## The full loop
+## The full loop (manual mode)
 
-1. You click the tag icon (or Ctrl+Shift+K)
-2. Extension injects "rename this chat" into the input and sends
-3. Claude's naming skill triggers, reads the conversation, classifies it
-4. Claude responds: `` `TOOL | Chrome extension chat namer | 2026-06-15 [DOC]` ``
-5. Extension watches the DOM, finds the `<code>` element matching the pattern
-6. Auto-copies the name to clipboard
-7. Toast: "Copied: TOOL | Chrome extension chat namer | 2026-06-15 [DOC]"
-8. You click the chat title in the sidebar and paste
+1. You click the tag icon in a message's action row (or Ctrl+Shift+K).
+2. Extension injects "rename this chat" into the composer and sends it.
+3. Claude's naming skill triggers, reads the conversation, classifies it.
+4. Claude replies with the name, e.g. `` `TOOL | Chrome extension chat namer | 2026-06-15 [DOC]` ``.
+5. You select the name and copy it (Ctrl/Cmd+C).
+6. You click the chat title in the sidebar and paste.
+
+Steps 1–3 are all the extension does in manual mode; 4–6 are you and Claude. The
+extension never reads the response, so there's nothing claude.ai can change that
+breaks the copy. (In opt-in `'auto'` mode, the extension also watches the reply
+and copies the name for you — see `MODE` in `content.js`.)
 
 ## Security
 
@@ -50,19 +53,22 @@ PREFIX | Topic | YYYY-MM-DD [flags]
 
 ## Skill dependency
 
-This extension depends on Claude's naming skill outputting the proposed name
-in backtick code spans. See `SKILL-UPDATE.md` for the exact changes needed
-to the chat-naming skill.
+In **manual mode** the extension only triggers Claude's naming skill — it doesn't
+parse the reply, so it works with whatever the skill outputs. You just need the
+`chat-naming` skill installed on claude.ai so "rename this chat" produces a name.
+
+In **auto mode** the extension reads the name from the reply, so it expects the
+name in a backtick code span. See `SKILL-UPDATE.md` for the skill-side contract.
 
 ## Files
 
 ```
 claude-toolkit/
-├── manifest.json       # MV3, minimal permissions
-├── content.js          # Button, prompt injection, response watcher
+├── manifest.json       # MV3, minimal permissions (activeTab, clipboardWrite)
+├── content.js          # Button injection, prompt inject + send; opt-in auto-copy watcher
 ├── content.css         # Button and toast styles
 ├── SKILL-UPDATE.md     # Skill changes needed for the contract
-└── icons/              # Extension icons
+└── icons/              # Extension icons (red tag)
 ```
 
 ## Version history
