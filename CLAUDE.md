@@ -68,11 +68,14 @@ const NAME_PATTERN = /\b(EXN|CLIENT|ART|LI|TOOL|CAR|COMS|KAI|READ|LIFE) \| .+? \
 
 Naming convention: `PREFIX | Topic | YYYY-MM-DD [flags]`. Detection layers
 (`findNameInNewResponse`), in order:
+0. **Deterministic channel** (`SELECTORS.nameBlock`): the skill emits the name in
+   a ```` ```chatname ```` fenced block → `<code class="language-chatname">`. Read
+   verbatim, newest block wins. This is the primary, unambiguous signal.
 1. New `code` / `strong` / `b` elements (`SELECTORS.nameContainers`) — handles
    backticks, bold, leading `Proposed:` labels, and multi-line code blocks.
 2. Plain-text fallback: scan the whole reply's `innerText`, take the last match.
 
-So a name in backticks, bolded, or bare all work. **If you change
+So the labeled block is preferred; a name in backticks, bolded, or bare still work. **If you change
 `VALID_PREFIXES`, the date format, or the separator, change it in both the skill
 and `NAME_RE_SRC`.** `SKILL-UPDATE.md` documents the skill-side contract; the
 canonical skill lives in `../Skill/` (re-upload to claude.ai after editing).

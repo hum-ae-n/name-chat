@@ -61,6 +61,11 @@ claude-toolkit/
 
 ## Version history
 
+- **v2.4.0** — Deterministic name channel. The skill now emits the name in a
+  ```chatname fenced block; the extension reads that block's text verbatim
+  (`SELECTORS.nameBlock`) instead of guessing which code span holds the name.
+  The previous code/bold/plain-text matching stays as a fallback, so older skill
+  output still works. Requires re-uploading the updated skill to claude.ai.
 - **v2.3.2** — Fixed the watcher hanging on "Waiting for Claude…". Replaced the
   mutation-triggered settle check with a steady interval poller, so the
   quiet-window fallback fires even after the DOM stops changing (the old timer

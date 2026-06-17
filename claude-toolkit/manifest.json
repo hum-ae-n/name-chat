@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kaipability Chat Namer",
-  "version": "2.3.2",
+  "version": "2.4.0",
   "description": "One-click chat rename using the Kaipability naming convention. Triggers Claude's naming skill directly.",
   "permissions": [
     "activeTab",

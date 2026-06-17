@@ -52,10 +52,14 @@
       'button[aria-label="Stop"]',
       'button[data-testid="stop-button"]',
     ],
-    // Where the proposed name might render. The skill SHOULD use a backtick
-    // code span, but it drifts to bold; scan all three so formatting variance
-    // doesn't break detection. A plain-text fallback in findNameInNewResponse()
-    // catches the case where it's not wrapped at all.
+    // DETERMINISTIC channel: the skill wraps the name in a ```chatname fenced
+    // block, which claude.ai renders as <code class="language-chatname">. Its
+    // text is exactly the name — read verbatim, no pattern-guessing. This is the
+    // primary, unambiguous signal.
+    nameBlock: 'main pre code[class*="chatname"], main code[class*="chatname"]',
+    // FALLBACK channel: if the labeled block is absent (skill drift, or claude.ai
+    // didn't apply the language class), scan code / bold elements and match by
+    // pattern. A plain-text fallback in findNameInNewResponse() is the last line.
     nameContainers: 'main code, main strong, main b',
     // Anchors for injecting the namer button, best to worst.
     actionAnchor: [
@@ -397,9 +401,21 @@
   }
 
   function findNameInNewResponse(codeCountBefore) {
-    // 1) Preferred: a formatted element (code / strong / bold) that appeared
-    //    after we sent the prompt and contains a name match. Extract just the
-    //    name (match[0]), so leading labels like "Proposed: " don't leak in.
+    // 0) Deterministic channel: the ```chatname block. Its content IS the name,
+    //    so read it verbatim (take the first line, trim). Newest block wins.
+    const blocks = document.querySelectorAll(SELECTORS.nameBlock);
+    if (blocks.length) {
+      const raw = blocks[blocks.length - 1].textContent;
+      if (raw && raw.trim()) {
+        const line = raw.trim().split('\n')[0].trim();
+        const m = line.match(NAME_PATTERN);
+        return m ? m[0].trim() : line;   // accept verbatim even if format drifts
+      }
+    }
+
+    // 1) Preferred fallback: a formatted element (code / strong / bold) that
+    //    appeared after we sent the prompt and contains a name match. Extract
+    //    just the name (match[0]), so leading labels like "Proposed: " don't leak.
     const candidates = document.querySelectorAll(SELECTORS.nameContainers);
     for (let i = candidates.length - 1; i >= codeCountBefore; i--) {
       const text = candidates[i]?.textContent;

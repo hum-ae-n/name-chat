@@ -237,24 +237,24 @@ Good topics (specific, scannable):
 
 ### Step 5: Format and present
 
-**Output format is load-bearing.** Always wrap the proposed name — and *only*
-the name — in a single inline backtick code span. The name alone goes inside the
-backticks; the `Proposed:` label, the date prose, and the `(was: …)` line all
-stay *outside*. Never present the name in a multi-line fenced code block (```), and
-never as plain or bold text. The Kaipability Chat Namer browser extension copies
-the text of that code span verbatim into the chat title, so anything extra inside
-the backticks (a label, a second line) ends up in the title.
+**Output format is load-bearing.** Present the proposed name inside a fenced
+code block whose info string is `chatname`, holding ONLY the name on a single
+line — no label, no second line, no prose. The `Proposed:` line and the
+`(was: …)` line go OUTSIDE the block as ordinary text. The Kaipability Chat
+Namer browser extension reads the contents of that block *verbatim* into the
+chat title, so the block must contain the name and nothing else. Never present
+the name as plain or bold text, and never put anything other than the name
+inside the block.
 
-Final form, single chat — the name in one inline backtick span:
+For a single rename, present exactly like this — no preamble:
 
-Proposed: `EXN | Edwards-Ebara CMP Screener | 2026-05-18`
+Proposed:
+```chatname
+EXN | Edwards-Ebara CMP screener assessment | 2026-05-18
+```
+(was: Edwards as Ebara competitor)
 
 **Always show the previous title alongside the proposed rename.** This applies to single renames and batch renames alike. The old title is the audit trail — Rocky needs to recognise that the rename refers to the chat he's thinking of.
-
-For a single rename, present exactly like this — name in its own backtick span, label and prior title as plain text on their own lines, no preamble:
-
-Proposed: `EXN | Edwards-Ebara CMP screener assessment | 2026-05-18`
-(was: Edwards as Ebara competitor)
 
 For batch renames, use a two-column table with the current title in column 1 and the proposed rename in column 2:
 
