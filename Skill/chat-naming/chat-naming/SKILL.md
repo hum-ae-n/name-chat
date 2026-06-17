@@ -274,6 +274,11 @@ Before presenting, check each name against:
 3. **Date is in YYYY-MM-DD format.** Use the date the work was actually done.
 4. **Flags are [DOC] and/or [>] only.** No other flags.
 5. **The whole name is under ~80 characters.** Long names get truncated in chat lists.
+6. **Output format (single rename): the proposed name is wrapped in exactly one
+   inline backtick code span, and it is the ONLY backtick span in the reply.** No
+   preamble, no bold, the name is not split across lines, and nothing else (no
+   label, no flag, no prose) is in backticks. This is the format the Kaipability
+   Chat Namer extension reads — verify it before presenting.
 
 If running a batch rename, `scripts/format_name.py` enforces these mechanically.
 
