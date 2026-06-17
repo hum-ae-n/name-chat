@@ -61,13 +61,13 @@
     // FALLBACK channel: inline code / bold elements, matched by pattern. A
     // whole-reply plain-text fallback in findNameInNewResponse() is the last line.
     nameContainers: 'main code, main strong, main b',
-    // Anchors for injecting the namer button, best to worst.
-    actionAnchor: [
-      'button[aria-label="Copy"]',
-      'button[aria-label="Retry"]',
-      '[data-testid*="copy"]',
-      '[data-testid*="action"]',
-    ],
+    // Terms that identify a per-message action button (Copy / Retry). Matched
+    // case-insensitively against aria-label and data-testid. The namer button is
+    // injected next to the LAST such button inside the conversation — and never
+    // the top header / Share bar (see findActionAnchor). Don't use a broad
+    // "action" term here: it matched the Share toolbar and the button drifted to
+    // the top-right.
+    actionAnchorTerms: ['copy', 'retry'],
     actionGroup: 'main .flex.items-center.gap-1, main .flex.items-center.gap-2, main [class*="actions"]',
     mainArea: 'main, [role="main"]',
   };
@@ -508,27 +508,36 @@
     return btn;
   }
 
+  // Find the per-message action button (Copy/Retry) to sit next to. Scoped to
+  // the conversation; explicitly skips the top header / Share bar and our own
+  // button. Returns the newest match (most recent message), or null.
+  function findActionAnchor() {
+    const scope = pick(SELECTORS.mainArea) || document;
+    const buttons = Array.from(scope.querySelectorAll('button'));
+    const matches = buttons.filter((b) => {
+      if (b.hasAttribute(BUTTON_ID_ATTR)) return false;   // not our own button
+      if (b.closest('header, nav, [class*="sticky"]')) return false; // never the top/Share bar
+      const lbl = (b.getAttribute('aria-label') || '').toLowerCase();
+      const tid = (b.getAttribute('data-testid') || '').toLowerCase();
+      if (lbl.includes('share')) return false;
+      return SELECTORS.actionAnchorTerms.some((t) => lbl.includes(t) || tid.includes(t));
+    });
+    return matches.length ? matches[matches.length - 1] : null;
+  }
+
   function injectButtons() {
     if (document.querySelector(`[${BUTTON_ID_ATTR}]`)) return;
 
-    let actionButton = null;
-    for (const sel of SELECTORS.actionAnchor) {
-      const matches = document.querySelectorAll(sel);
-      if (matches.length > 0) {
-        actionButton = matches[matches.length - 1];
-        break;
-      }
+    // 1) Anchor next to the most recent message's Copy/Retry button.
+    const anchor = findActionAnchor();
+    if (anchor && anchor.parentElement && !anchor.parentElement.querySelector(`[${BUTTON_ID_ATTR}]`)) {
+      anchor.parentElement.appendChild(createNamerButton());
+      return;
     }
 
-    if (actionButton) {
-      const parent = actionButton.parentElement;
-      if (parent && !parent.querySelector(`[${BUTTON_ID_ATTR}]`)) {
-        parent.appendChild(createNamerButton());
-        return;
-      }
-    }
-
-    const btnGroups = document.querySelectorAll(SELECTORS.actionGroup);
+    // 2) Button-group fallback, scoped to the conversation.
+    const scope = pick(SELECTORS.mainArea) || document;
+    const btnGroups = scope.querySelectorAll(SELECTORS.actionGroup);
     if (btnGroups.length > 0) {
       const last = btnGroups[btnGroups.length - 1];
       if (!last.querySelector(`[${BUTTON_ID_ATTR}]`)) {
@@ -537,7 +546,7 @@
       }
     }
 
-    // Floating fallback
+    // 3) Floating fallback
     if (!document.getElementById('kai-namer-float')) {
       const float = createNamerButton();
       float.id = 'kai-namer-float';

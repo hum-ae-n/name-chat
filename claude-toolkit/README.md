@@ -61,6 +61,10 @@ claude-toolkit/
 
 ## Version history
 
+- **v2.4.2** — Fixed the button drifting to the top-right Share bar. Injection
+  now anchors to the newest per-message Copy/Retry button *inside the
+  conversation*, explicitly skipping the header/Share/sticky top bar, and drops
+  the over-broad `[data-testid*="action"]` selector that caused the drift.
 - **v2.4.1** — Read the ```chatname block by scanning `<pre>` text with the name
   pattern, instead of a `code[class*="chatname"]` selector. claude.ai shows the
   info string as a header label *outside* the `<code>`, so the class-based
