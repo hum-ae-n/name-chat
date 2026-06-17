@@ -12,6 +12,15 @@
 
   const BUTTON_ID_ATTR = 'data-kai-namer';
   const PROMPT_TEXT = 'rename this chat';
+
+  // Operating mode.
+  //   'manual' (default) — one click injects the prompt and sends it; you read
+  //     Claude's reply and copy the name yourself. Depends only on the editor +
+  //     send selectors, which are stable. Nearly unbreakable.
+  //   'auto' — additionally watch the response, extract the name, and copy it to
+  //     the clipboard. Convenient but depends on claude.ai's response DOM, which
+  //     changes often. Flip to 'auto' only if you want to chase that.
+  const MODE = 'manual';
   const WATCH_TIMEOUT_MS = 45000;   // hard give-up after sending the prompt
   const QUIET_MS = 1500;            // fallback "stream settled" window if Stop button isn't detected
   const SETTLE_POLL_MS = 400;       // how often the watcher re-evaluates after a mutation
@@ -495,9 +504,16 @@
         return;
       }
 
-      // Start watching for the response — button stays in loading state
-      // until we find the name or timeout
-      startResponseWatcher(btn);
+      if (MODE === 'auto') {
+        // Watch the response, extract the name, copy it (fragile — depends on
+        // claude.ai's response DOM). Button stays loading until found/timeout.
+        startResponseWatcher(btn);
+      } else {
+        // Manual mode: prompt is sent; you copy the name from Claude's reply.
+        btn.classList.remove('kai-namer-loading');
+        btn.disabled = false;
+        showToast('Sent. When Claude replies, select the name and copy it (Ctrl/Cmd+C).', 'success');
+      }
 
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
@@ -535,7 +551,13 @@
     return matches.length ? matches[matches.length - 1] : null;
   }
 
+  function onChatPage() {
+    return /\/chat\//.test(window.location.pathname);
+  }
+
   function injectButtons() {
+    // Only inside a conversation — never on the Chats list, settings, etc.
+    if (!onChatPage()) return;
     if (document.querySelector(`[${BUTTON_ID_ATTR}]`)) return;
 
     // 1) Anchor next to the most recent message's Copy/Retry button.
@@ -556,13 +578,9 @@
       }
     }
 
-    // 3) Floating fallback
-    if (!document.getElementById('kai-namer-float')) {
-      const float = createNamerButton();
-      float.id = 'kai-namer-float';
-      float.classList.add('kai-namer-float');
-      document.body.appendChild(float);
-    }
+    // No anchor yet — do nothing. The MutationObserver retries as the message
+    // toolbar renders. (No floating fallback: the button belongs in the message
+    // action row only, never as a stray FAB on the page.)
   }
 
   // ── Toast ─────────────────────────────────────────────────────────────
@@ -660,7 +678,11 @@
   // ── Boot ──────────────────────────────────────────────────────────────
 
   function boot() {
-    if (window.location.pathname.match(/\/chat\//)) injectButtons();
+    // Remove any stray floating button left by older versions.
+    const oldFloat = document.getElementById('kai-namer-float');
+    if (oldFloat) oldFloat.remove();
+
+    injectButtons();
 
     observer.observe(document.body, { childList: true, subtree: true });
 
@@ -669,6 +691,7 @@
       if (window.location.href !== lastUrl) {
         lastUrl = window.location.href;
         document.querySelectorAll(`[${BUTTON_ID_ATTR}]`).forEach(el => el.remove());
+        // injectButtons() self-gates to chat pages, so this is safe everywhere.
         setTimeout(injectButtons, 1000);
       }
     }, 500);

@@ -4,12 +4,18 @@ One-click chat rename for claude.ai. No API key. No data leaves the browser.
 
 ## What it does
 
-Click the red tag icon. The extension types "rename this chat" and sends it.
-Claude's naming skill classifies the conversation and responds with the
-formatted name in a code span. The extension detects it, copies it to your
-clipboard, and shows a toast. You paste it as the chat title.
+Click the red tag icon in a message's action row. The extension types "rename
+this chat" and sends it. Claude's naming skill classifies the conversation and
+replies with the formatted name. You select the name and copy it, then paste it
+as the chat title.
 
-**One click → wait → copied.**
+**One click → Claude proposes the name → you copy it.**
+
+This is **manual mode** (the default): the extension only injects the prompt and
+sends it — the robust part that depends solely on the editor and send selectors.
+It does not watch the response or auto-copy. An optional `'auto'` mode
+(`MODE` in `content.js`) adds response-watching and clipboard copy, but that
+depends on claude.ai's response DOM and is off by default.
 
 ```
 PREFIX | Topic | YYYY-MM-DD [flags]
@@ -61,6 +67,12 @@ claude-toolkit/
 
 ## Version history
 
+- **v2.5.0** — Manual mode is now the default (`MODE = 'manual'`): one click
+  injects "rename this chat" and sends; you copy the name from Claude's reply.
+  Drops all dependence on the fragile response-watching/clipboard path (kept as
+  opt-in `'auto'`). Removed the floating fallback button entirely and gated
+  injection to chat pages, so no stray icon appears on the Chats list or
+  elsewhere — the tag lives only in the message action row.
 - **v2.4.3** — Fixed the real "No name found" cause: claude.ai renders code
   spans with non-breaking spaces ( ), which defeated the space-based regex
   even though the name looked correct. Names are now whitespace-normalized

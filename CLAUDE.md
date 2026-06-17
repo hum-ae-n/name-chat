@@ -31,28 +31,38 @@ name-chat/
 There is no `package.json`, bundler, linter, or test suite. `content.js` is
 loaded directly by Chrome as a content script.
 
+## Operating mode
+
+`MODE` (top of `content.js`) is **`'manual'` by default** — and that's the
+product. Manual mode depends only on the editor + send selectors, which have
+been stable throughout; the auto path repeatedly broke against claude.ai's
+response DOM (timing, nbsp in code spans, etc.), so it's opt-in only. Don't
+re-enable `'auto'` as the default without a strong reason.
+
 ## How it works (the loop)
 
 1. **Inject button** — `injectButtons()` places a red tag button next to the
-   message action buttons (Copy/Retry), with fallbacks to a button group or a
-   floating FAB. A `MutationObserver` + SPA URL poller re-injects on navigation.
+   message action buttons (Copy/Retry), via `findActionAnchor()` (scoped to
+   `main`, never the header/Share bar), with a button-group fallback. It
+   **self-gates to chat pages** (`onChatPage()`) and has **no floating fallback**
+   — the tag lives only in the message action row. A `MutationObserver` + SPA URL
+   poller re-injects on navigation.
 2. **Trigger** — click (or `Ctrl/Cmd+Shift+K`) runs `handleNamerClick`:
    - `findEditor()` locates the ProseMirror composer.
    - Guards against overwriting unsent text.
    - `injectText()` writes "rename this chat" using 4 fallback strategies
      (`execCommand` → paste event → direct DOM → textarea value setter).
    - `findAndClickSend()` clicks send (aria-label → svg heuristic → Enter key).
-3. **Watch** — `startResponseWatcher()` snapshots the count of response `<code>`
-   elements, then observes `main`. It finishes as soon as **both** a valid name
-   has appeared **and** the stream has settled — settled means the Stop button is
-   gone (`isStreaming()`), or `QUIET_MS` of no mutations as a fallback. Hard
-   give-up at `WATCH_TIMEOUT_MS` (45s).
-4. **Extract** — `findNameInNewResponse()` tests each new `<code>` against
-   `NAME_PATTERN`. First match wins.
-5. **Apply** — clipboard is the **guaranteed primary path**:
-   `navigator.clipboard.writeText()` + a toast telling the user to paste.
-   `tryAutoApplyTitle()` (in-place sidebar rename) is an **opt-in, non-blocking
-   bonus**, gated behind the `AUTO_APPLY` flag (default `false`).
+3. **Manual mode** — that's it: a toast tells the user to copy the name from
+   Claude's reply. Done.
+
+**Auto mode only (opt-in):** after sending, `startResponseWatcher()` observes
+`main`, finishes when a name has appeared and the stream settled
+(`isStreaming()` / `QUIET_MS`, hard give-up at `WATCH_TIMEOUT_MS`),
+`findNameInNewResponse()` extracts it (whitespace-normalized via `norm()` to
+beat non-breaking spaces; layers: `<pre>` → code/strong/b → plain text), and
+`copyToClipboard()` copies it. `tryAutoApplyTitle()` (in-place rename) stays
+behind `AUTO_APPLY` (default `false`).
 
 ## The skill ⇄ extension contract (load-bearing)
 
