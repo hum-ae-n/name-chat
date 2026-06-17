@@ -56,20 +56,26 @@ loaded directly by Chrome as a content script.
 
 ## The skill ⇄ extension contract (load-bearing)
 
-The extension only works if Claude's naming skill emits the proposed name as a
-**backtick code span** (renders as `<code>`) matching:
+The extension detects the proposed name by pattern, **not** by exact formatting.
+The skill *should* emit it as a backtick code span, but the matcher is
+deliberately tolerant because LLM output drifts:
 
 ```js
 const VALID_PREFIXES = ['EXN','CLIENT','ART','LI','TOOL','CAR','COMS','KAI','READ','LIFE'];
-const NAME_PATTERN = /^(EXN|CLIENT|ART|LI|TOOL|CAR|COMS|KAI|READ|LIFE) \| .+ \| \d{4}-\d{2}-\d{2}/;
+// Not anchored to start-of-string — finds the name anywhere, extracts just it.
+const NAME_PATTERN = /\b(EXN|CLIENT|ART|LI|TOOL|CAR|COMS|KAI|READ|LIFE) \| .+? \| \d{4}-\d{2}-\d{2}(?:\s*\[[^\]]+\])?/;
 ```
 
-Naming convention: `PREFIX | Topic | YYYY-MM-DD [flags]`.
+Naming convention: `PREFIX | Topic | YYYY-MM-DD [flags]`. Detection layers
+(`findNameInNewResponse`), in order:
+1. New `code` / `strong` / `b` elements (`SELECTORS.nameContainers`) — handles
+   backticks, bold, leading `Proposed:` labels, and multi-line code blocks.
+2. Plain-text fallback: scan the whole reply's `innerText`, take the last match.
 
-If you change `VALID_PREFIXES`, the date format, or the separator in either the
-skill or the extension, **change both**. `SKILL-UPDATE.md` documents the exact
-skill edits this depends on. Plain-text names (not in backticks) are invisible to
-the watcher.
+So a name in backticks, bolded, or bare all work. **If you change
+`VALID_PREFIXES`, the date format, or the separator, change it in both the skill
+and `NAME_RE_SRC`.** `SKILL-UPDATE.md` documents the skill-side contract; the
+canonical skill lives in `../Skill/` (re-upload to claude.ai after editing).
 
 ## Working on this code
 

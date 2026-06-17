@@ -61,6 +61,12 @@ claude-toolkit/
 
 ## Version history
 
+- **v2.3.0** — Tolerant name extraction. The matcher now finds the name
+  *anywhere* in an element (not anchored to the start), so leading labels like
+  "Proposed: " no longer break it, and it extracts just the name. Scans
+  `code` + `strong` + `b`, with a plain-text fallback over the whole reply, so
+  the name is detected whether the skill wraps it in backticks, bolds it, or
+  leaves it bare. Multi-line code blocks are handled.
 - **v2.2.0** — Hardening pass. All claude.ai selectors centralized into one
   `SELECTORS` block. Stream-completion detected via the Stop→Send button
   transition (finishes the moment a valid name appears, instead of a blind

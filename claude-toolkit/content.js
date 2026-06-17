@@ -17,9 +17,16 @@
   const SETTLE_POLL_MS = 400;       // how often the watcher re-evaluates after a mutation
   const AUTO_APPLY = false;         // best-effort in-place rename; off by default — clipboard is the primary path
   const VALID_PREFIXES = ['EXN','CLIENT','ART','LI','TOOL','CAR','COMS','KAI','READ','LIFE'];
-  const NAME_PATTERN = new RegExp(
-    '^(' + VALID_PREFIXES.join('|') + ') \\| .+ \\| \\d{4}-\\d{2}-\\d{2}'
-  );
+  // Match the proposed name ANYWHERE in a code element's text — tolerant of a
+  // leading label ("Proposed: …"), surrounding prose, and multi-line code
+  // blocks (the name and a "(was: …)" line living in one <code>). Captures
+  // PREFIX | Topic | YYYY-MM-DD with optional trailing [FLAGS]. Not anchored to
+  // start-of-string: the skill's exact formatting varies, so we don't depend on
+  // it. `.` doesn't cross newlines, so the match stays on the name's own line.
+  const NAME_RE_SRC =
+    '\\b(' + VALID_PREFIXES.join('|') + ') \\| .+? \\| \\d{4}-\\d{2}-\\d{2}(?:\\s*\\[[^\\]]+\\])?';
+  const NAME_PATTERN = new RegExp(NAME_RE_SRC);
+  const NAME_PATTERN_G = new RegExp(NAME_RE_SRC, 'g'); // for whole-conversation text fallback
 
   // ── Selectors ─────────────────────────────────────────────────────────
   // EVERY claude.ai DOM dependency lives here. When the site redesigns and the
@@ -45,8 +52,11 @@
       'button[aria-label="Stop"]',
       'button[data-testid="stop-button"]',
     ],
-    // Where the response name renders. Scoped to the conversation area.
-    responseCode: 'main code',
+    // Where the proposed name might render. The skill SHOULD use a backtick
+    // code span, but it drifts to bold; scan all three so formatting variance
+    // doesn't break detection. A plain-text fallback in findNameInNewResponse()
+    // catches the case where it's not wrapped at all.
+    nameContainers: 'main code, main strong, main b',
     // Anchors for injecting the namer button, best to worst.
     actionAnchor: [
       'button[aria-label="Copy"]',
@@ -318,7 +328,7 @@
   // is an opt-in, non-blocking bonus.
 
   function startResponseWatcher(btn) {
-    const codeCountBefore = document.querySelectorAll(SELECTORS.responseCode).length;
+    const codeCountBefore = document.querySelectorAll(SELECTORS.nameContainers).length;
     let watchTimeout = null;
     let pollTimeout = null;
     let lastMutation = nowish();
@@ -400,14 +410,25 @@
   }
 
   function findNameInNewResponse(codeCountBefore) {
-    const allCode = document.querySelectorAll(SELECTORS.responseCode);
-    // Only check code elements that appeared AFTER we sent the prompt
-    for (let i = allCode.length - 1; i >= codeCountBefore; i--) {
-      const text = allCode[i]?.textContent?.trim();
-      if (text && NAME_PATTERN.test(text)) {
-        return text;
-      }
+    // 1) Preferred: a formatted element (code / strong / bold) that appeared
+    //    after we sent the prompt and contains a name match. Extract just the
+    //    name (match[0]), so leading labels like "Proposed: " don't leak in.
+    const candidates = document.querySelectorAll(SELECTORS.nameContainers);
+    for (let i = candidates.length - 1; i >= codeCountBefore; i--) {
+      const text = candidates[i]?.textContent;
+      if (!text) continue;
+      const m = text.match(NAME_PATTERN);
+      if (m) return m[0].trim();
     }
+
+    // 2) Fallback: the skill emitted the name as plain text (no code/bold wrap).
+    //    Scan the conversation's visible text and take the LAST match — the most
+    //    recent proposal. Our own prompt ("rename this chat") never matches.
+    const area = pick(SELECTORS.mainArea);
+    const blob = area && area.innerText ? area.innerText : '';
+    const all = blob.match(NAME_PATTERN_G);
+    if (all && all.length) return all[all.length - 1].trim();
+
     return null;
   }
 
