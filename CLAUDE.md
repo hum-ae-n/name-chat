@@ -66,16 +66,20 @@ const VALID_PREFIXES = ['EXN','CLIENT','ART','LI','TOOL','CAR','COMS','KAI','REA
 const NAME_PATTERN = /\b(EXN|CLIENT|ART|LI|TOOL|CAR|COMS|KAI|READ|LIFE) \| .+? \| \d{4}-\d{2}-\d{2}(?:\s*\[[^\]]+\])?/;
 ```
 
-Naming convention: `PREFIX | Topic | YYYY-MM-DD [flags]`. Detection layers
+Naming convention: `PREFIX | Topic | YYYY-MM-DD [flags]`. The skill emits the
+name in an **inline backtick code span** (its dominant style) — don't try to
+force a fenced block; the skill is full of inline examples and the model reverts
+to inline anyway. Detection is deliberately format-agnostic. Layers
 (`findNameInNewResponse`), in order:
-0. **Deterministic channel** (`SELECTORS.nameBlock`): the skill emits the name in
-   a ```` ```chatname ```` fenced block → `<code class="language-chatname">`. Read
-   verbatim, newest block wins. This is the primary, unambiguous signal.
-1. New `code` / `strong` / `b` elements (`SELECTORS.nameContainers`) — handles
-   backticks, bold, leading `Proposed:` labels, and multi-line code blocks.
+0. `<pre>` code blocks (`SELECTORS.codeBlocks`) matched by pattern — catches a
+   fenced block if one ever appears. Harmless bonus.
+1. New `code` / `strong` / `b` elements (`SELECTORS.nameContainers`) — the
+   primary working path. Handles inline backticks, bold, and leading `Proposed:`
+   labels; extracts just the name so other code spans (e.g. `[DOC]`) are skipped.
 2. Plain-text fallback: scan the whole reply's `innerText`, take the last match.
 
-So the labeled block is preferred; a name in backticks, bolded, or bare still work. **If you change
+So a name in inline backticks, a fenced block, bolded, or bare all work — the
+skill just needs to make the name the only `PREFIX | … | date` code span. **If you change
 `VALID_PREFIXES`, the date format, or the separator, change it in both the skill
 and `NAME_RE_SRC`.** `SKILL-UPDATE.md` documents the skill-side contract; the
 canonical skill lives in `../Skill/` (re-upload to claude.ai after editing).

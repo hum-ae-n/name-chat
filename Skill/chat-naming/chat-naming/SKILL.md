@@ -237,21 +237,19 @@ Good topics (specific, scannable):
 
 ### Step 5: Format and present
 
-**Output format is load-bearing.** Present the proposed name inside a fenced
-code block whose info string is `chatname`, holding ONLY the name on a single
-line — no label, no second line, no prose. The `Proposed:` line and the
-`(was: …)` line go OUTSIDE the block as ordinary text. The Kaipability Chat
-Namer browser extension reads the contents of that block *verbatim* into the
-chat title, so the block must contain the name and nothing else. Never present
-the name as plain or bold text, and never put anything other than the name
-inside the block.
+**Output format is load-bearing.** Wrap the proposed name — and *only* the name —
+in a single inline backtick code span, so it renders as a `<code>` element. The
+`Proposed:` label and the `(was: …)` line stay as ordinary text *outside* the
+backticks. Never present the name as plain or bold text, and never split it
+across lines. This matches the inline `PREFIX | Topic | date` style used
+throughout this skill; the Kaipability Chat Namer browser extension detects that
+code span and copies the name. Keep the rest of the reply free of backtick spans
+where you can — if you must reference a flag like [DOC] in the reasoning, write
+it as plain text, not in backticks, so the name is the only code span.
 
 For a single rename, present exactly like this — no preamble:
 
-Proposed:
-```chatname
-EXN | Edwards-Ebara CMP screener assessment | 2026-05-18
-```
+Proposed: `EXN | Edwards-Ebara CMP screener assessment | 2026-05-18`
 (was: Edwards as Ebara competitor)
 
 **Always show the previous title alongside the proposed rename.** This applies to single renames and batch renames alike. The old title is the audit trail — Rocky needs to recognise that the rename refers to the chat he's thinking of.
