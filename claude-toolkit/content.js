@@ -364,7 +364,15 @@
       if (elapsed >= WATCH_TIMEOUT_MS) {
         if (name) { finish(name); return; }
         stop();
-        showToast('No name found in Claude\'s reply. Check the naming skill output, then copy manually.', 'warning');
+        // Diagnostic: dump what we actually saw so a miss can be debugged from
+        // the console instead of guessed at. Not a UX path — see showToast.
+        try {
+          const recent = Array.from(document.querySelectorAll(SELECTORS.nameContainers))
+            .slice(-12).map((e) => JSON.stringify(e.textContent));
+          console.warn('[KaiNamer] No name matched. Pattern:', NAME_PATTERN);
+          console.warn('[KaiNamer] Recent code/strong/bold texts:', recent);
+        } catch (_) {}
+        showToast('No name found. Open the DevTools console (F12) for what was seen, then copy manually.', 'warning');
       }
     }, SETTLE_POLL_MS);
 
@@ -401,33 +409,35 @@
   }
 
   function findNameInNewResponse(codeCountBefore) {
-    // 0) PRIMARY: code blocks. The ```chatname block renders as a <pre> whose
-    //    text is the name. Scan newest-first and match by pattern — works no
-    //    matter where the language class lives or how the block is tokenized.
+    // Normalise whitespace before matching. claude.ai renders code spans with
+    // non-breaking spaces ( ) and other invisible whitespace — visually
+    // identical, but a regex written with normal spaces never matches. This is
+    // the most common reason a name that looks correct on screen isn't found.
+    const tryMatch = (raw) => {
+      if (!raw) return null;
+      const m = norm(raw).match(NAME_PATTERN);
+      return m ? m[0].trim() : null;
+    };
+
+    // 0) Code blocks (<pre>) — catches a fenced name block if one appears.
     const blocks = document.querySelectorAll(SELECTORS.codeBlocks);
     for (let i = blocks.length - 1; i >= 0; i--) {
-      const text = blocks[i] && blocks[i].textContent;
-      if (!text) continue;
-      const m = text.match(NAME_PATTERN);
-      if (m) return m[0].trim();
+      const hit = tryMatch(blocks[i] && blocks[i].textContent);
+      if (hit) return hit;
     }
 
-    // 1) Preferred fallback: a formatted element (code / strong / bold) that
-    //    appeared after we sent the prompt and contains a name match. Extract
-    //    just the name (match[0]), so leading labels like "Proposed: " don't leak.
+    // 1) Inline code / bold elements that appeared after the prompt was sent.
+    //    Extract just the name (match[0]), so other spans (e.g. [DOC]) are skipped.
     const candidates = document.querySelectorAll(SELECTORS.nameContainers);
     for (let i = candidates.length - 1; i >= codeCountBefore; i--) {
-      const text = candidates[i]?.textContent;
-      if (!text) continue;
-      const m = text.match(NAME_PATTERN);
-      if (m) return m[0].trim();
+      const hit = tryMatch(candidates[i] && candidates[i].textContent);
+      if (hit) return hit;
     }
 
-    // 2) Fallback: the skill emitted the name as plain text (no code/bold wrap).
-    //    Scan the conversation's visible text and take the LAST match — the most
-    //    recent proposal. Our own prompt ("rename this chat") never matches.
+    // 2) Whole-reply plain-text fallback — take the LAST match (most recent
+    //    proposal). Our own prompt ("rename this chat") never matches.
     const area = pick(SELECTORS.mainArea);
-    const blob = area && area.innerText ? area.innerText : '';
+    const blob = area && area.innerText ? norm(area.innerText) : '';
     const all = blob.match(NAME_PATTERN_G);
     if (all && all.length) return all[all.length - 1].trim();
 
@@ -583,6 +593,13 @@
     return (typeof performance !== 'undefined' && performance.now)
       ? performance.now()
       : Date.now();
+  }
+
+  // Collapse all whitespace — including non-breaking spaces ( ), which
+  // claude.ai uses inside code spans — to single spaces, so the name pattern
+  // matches regardless of how the text was spaced. JS \s includes  .
+  function norm(s) {
+    return s.replace(/\s+/g, ' ').trim();
   }
 
   // Copy text resiliently. The async Clipboard API can reject (no transient user

@@ -61,6 +61,11 @@ claude-toolkit/
 
 ## Version history
 
+- **v2.4.3** — Fixed the real "No name found" cause: claude.ai renders code
+  spans with non-breaking spaces ( ), which defeated the space-based regex
+  even though the name looked correct. Names are now whitespace-normalized
+  before matching (all three detection layers). Added a console diagnostic that
+  dumps the recent code/bold texts when a name can't be matched.
 - **v2.4.2** — Fixed the button drifting to the top-right Share bar. Injection
   now anchors to the newest per-message Copy/Retry button *inside the
   conversation*, explicitly skipping the header/Share/sticky top bar, and drops
